@@ -1,7 +1,17 @@
 [package]
-name = "chisel"
+name = "chisel-extract"
 version = "1.0.1"
 edition = "2024"
+description = "Find and extract known data fragments from arbitrary binary files — using only checksums, sizes, and structural metadata"
+license = "MIT"
+repository = "https://github.com/pathawks/chisel"
+
+[lib]
+name = "chisel"
+
+[[bin]]
+name = "chisel"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
