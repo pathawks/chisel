@@ -76,7 +76,6 @@ where
         write_rom(&roms[rid], &bytes_owned)?;
         roms[rid].matched = true;
         *unmatched -= 1;
-        cands[cand_idx].coverage.add(spec);
 
         if let Some(ref mut recs) = records {
             recs.push(MatchRecord {
@@ -93,11 +92,8 @@ where
         if verbose {
             println!("Found {} [{}]", roms[rid], found.data);
         }
-
-        if cands[cand_idx].is_fully_covered() {
-            break;
-        }
     }
+    cands[cand_idx].coverage.add(spec);
 
     Ok(true)
 }
