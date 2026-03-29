@@ -1,5 +1,5 @@
-use crate::types::{ByteSwap, ExtractionSpec, MatchedData, MatchRecord, RomInfo};
 use crate::Candidate;
+use crate::types::{ByteSwap, ExtractionSpec, MatchRecord, MatchedData, RomInfo};
 use anyhow::Context;
 use crc32fast::Hasher as CrcHasher;
 use std::collections::HashMap;
@@ -211,7 +211,10 @@ fn build_specs(spec: &RegionSpec, roms: &[RomInfo]) -> Option<Vec<(usize, Extrac
 
 /// Build ExtractionSpecs for all lanes in one interleaved bank.
 /// `physical_offset` is the byte offset of this bank within the combined file.
-fn build_bank_specs(bank: &InterleavedBank, physical_offset: usize) -> Vec<(usize, ExtractionSpec)> {
+fn build_bank_specs(
+    bank: &InterleavedBank,
+    physical_offset: usize,
+) -> Vec<(usize, ExtractionSpec)> {
     bank.rom_indices
         .iter()
         .enumerate()
@@ -273,7 +276,12 @@ fn attempt_decomposition(
         .map(|(rom_idx, spec)| {
             let (bytes, crc) = decompose_rom(cand_data, &spec);
             let verified = crc == roms[rom_idx].crc32;
-            Piece { rom_idx, spec, bytes, verified }
+            Piece {
+                rom_idx,
+                spec,
+                bytes,
+                verified,
+            }
         })
         .collect();
     Some(pieces)
@@ -392,7 +400,9 @@ pub fn run_structural_pass(
             if best_score == 0 {
                 eprintln!(
                     "Structural: region {:?}: {} candidates match size {} but no CRC evidence to disambiguate — skipping",
-                    region_spec.region_key, cand_indices.len(), region_spec.combined_size
+                    region_spec.region_key,
+                    cand_indices.len(),
+                    region_spec.combined_size
                 );
                 continue 'region;
             }
@@ -537,7 +547,9 @@ mod tests {
 
     #[test]
     fn fully_interleaved_four_way() {
-        let roms: Vec<RomInfo> = (0..4).map(|i| make_rom("game", "maindata", i, 524288, i as u32)).collect();
+        let roms: Vec<RomInfo> = (0..4)
+            .map(|i| make_rom("game", "maindata", i, 524288, i as u32))
+            .collect();
         let specs = analyze_regions(&roms);
         assert_eq!(specs.len(), 1);
         assert!(matches!(specs[0].layout, RegionLayout::FullyInterleaved(_)));
@@ -563,7 +575,13 @@ mod tests {
         let mut roms = Vec::new();
         for bank in 0u64..3 {
             for lane in 0u64..4 {
-                roms.push(make_rom("game", "grom", bank * 0x200000 + lane, 524288, (bank * 4 + lane) as u32));
+                roms.push(make_rom(
+                    "game",
+                    "grom",
+                    bank * 0x200000 + lane,
+                    524288,
+                    (bank * 4 + lane) as u32,
+                ));
             }
         }
         let specs = analyze_regions(&roms);
@@ -595,7 +613,9 @@ mod tests {
 
     #[test]
     fn build_specs_fully_interleaved() {
-        let roms: Vec<RomInfo> = (0u64..4).map(|i| make_rom("game", "maindata", i, 524288, i as u32)).collect();
+        let roms: Vec<RomInfo> = (0u64..4)
+            .map(|i| make_rom("game", "maindata", i, 524288, i as u32))
+            .collect();
         let region_specs = analyze_regions(&roms);
         let s = build_specs(&region_specs[0], &roms).unwrap();
         assert_eq!(s.len(), 4);
@@ -612,7 +632,13 @@ mod tests {
         let mut roms = Vec::new();
         for bank in 0u64..3 {
             for lane in 0u64..4 {
-                roms.push(make_rom("game", "grom", bank * 0x200000 + lane, 524288, (bank * 4 + lane) as u32));
+                roms.push(make_rom(
+                    "game",
+                    "grom",
+                    bank * 0x200000 + lane,
+                    524288,
+                    (bank * 4 + lane) as u32,
+                ));
             }
         }
         let region_specs = analyze_regions(&roms);

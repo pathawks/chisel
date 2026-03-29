@@ -15,12 +15,7 @@ impl Deinterleave {
         Self::with_opts(weave, word_size, ByteSwap::None, false)
     }
 
-    pub fn with_opts(
-        weave: usize,
-        word_size: usize,
-        byte_swap: ByteSwap,
-        rotate: bool,
-    ) -> Self {
+    pub fn with_opts(weave: usize, word_size: usize, byte_swap: ByteSwap, rotate: bool) -> Self {
         let bs = match byte_swap {
             ByteSwap::None => String::new(),
             ByteSwap::Swap2 => ",swap2".to_string(),
@@ -32,7 +27,13 @@ impl Deinterleave {
         } else {
             format!("Deinterleave({},{}{}{})", weave, word_size, bs, rot)
         };
-        Deinterleave { weave, word_size, byte_swap, rotate, name: name_str }
+        Deinterleave {
+            weave,
+            word_size,
+            byte_swap,
+            rotate,
+            name: name_str,
+        }
     }
 
     fn granularity(&self) -> usize {

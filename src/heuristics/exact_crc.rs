@@ -18,7 +18,11 @@ impl ExactCrc {
             (ByteSwap::Swap2, true) => "ExactCrc(swap2,rotate)".to_string(),
             (ByteSwap::Swap4, true) => "ExactCrc(swap4,rotate)".to_string(),
         };
-        ExactCrc { byte_swap, rotate, name }
+        ExactCrc {
+            byte_swap,
+            rotate,
+            name,
+        }
     }
 
     fn granularity(&self) -> usize {
@@ -348,7 +352,12 @@ mod tests {
 
         let h = ExactCrc::new(ByteSwap::None, true);
         let matches = run_heuristic(&h, &mut roms, &mut cands);
-        assert_eq!(matches.len(), 1, "expected exactly one match, got {}", matches.len());
+        assert_eq!(
+            matches.len(),
+            1,
+            "expected exactly one match, got {}",
+            matches.len()
+        );
         assert!(roms[1].matched);
         let mr = &matches[0];
         assert_eq!(mr.spec.step_by, 1);

@@ -97,9 +97,7 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
 
     loop {
         match reader.read_event_into(&mut buf)? {
-            Event::Start(e)
-                if matches!(e.name().as_ref(), b"machine" | b"game") =>
-            {
+            Event::Start(e) if matches!(e.name().as_ref(), b"machine" | b"game") => {
                 let mut game_name = String::new();
                 for attr in e.attributes().with_checks(false) {
                     let attr = attr?;
@@ -169,10 +167,11 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
                 }
                 // If a header is present, adjust size/CRC for content-only matching
                 if let Some(hex_str) = raw_header {
-                    let hdr = parse_hex_header(&hex_str)
-                        .context("Parsing <rom header>")?;
+                    let hdr = parse_hex_header(&hex_str).context("Parsing <rom header>")?;
                     let full_crc = info.crc32;
-                    let content_len = info.size.checked_sub(hdr.len())
+                    let content_len = info
+                        .size
+                        .checked_sub(hdr.len())
                         .context("Header longer than ROM size")?;
                     info.size = content_len;
                     info.crc32 = derive_content_crc(full_crc, &hdr, content_len);
@@ -180,9 +179,7 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
                 }
                 roms.push(info);
             }
-            Event::End(e)
-                if matches!(e.name().as_ref(), b"machine" | b"game") =>
-            {
+            Event::End(e) if matches!(e.name().as_ref(), b"machine" | b"game") => {
                 if maybe_game.is_some() && in_target {
                     break; // finished the one we wanted
                 }
@@ -199,11 +196,7 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
     if roms.is_empty() {
         match maybe_game {
             Some(game) => {
-                anyhow::bail!(
-                    "No game named {:?} found in {}",
-                    game,
-                    dat_path.display()
-                );
+                anyhow::bail!("No game named {:?} found in {}", game, dat_path.display());
             }
             None => {
                 anyhow::bail!("No <rom> entries found in {}", dat_path.display());
@@ -283,15 +276,9 @@ where
                 }
                 let member_name = entry.name().to_string();
                 let mut member_data = Vec::new();
-                entry
-                    .read_to_end(&mut member_data)
-                    .with_context(|| {
-                        format!(
-                            "Reading zip member '{}' in {}",
-                            member_name,
-                            path.display()
-                        )
-                    })?;
+                entry.read_to_end(&mut member_data).with_context(|| {
+                    format!("Reading zip member '{}' in {}", member_name, path.display())
+                })?;
                 if verbose {
                     eprintln!(
                         "  zip member: {} ({} bytes)",
@@ -359,8 +346,7 @@ pub fn expand_kpka_entries(cands: &mut Vec<Candidate>, verbose: bool) {
             continue;
         }
 
-        let file_count =
-            u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
+        let file_count = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
         let table_end = KPKA_HEADER_SIZE + file_count * KPKA_ENTRY_SIZE;
         if table_end > data.len() {
             continue;
@@ -374,10 +360,12 @@ pub fn expand_kpka_entries(cands: &mut Vec<Candidate>, verbose: bool) {
                 u64::from_le_bytes(data[base + 24..base + 32].try_into().unwrap()) as usize;
             let uncompressed_size =
                 u64::from_le_bytes(data[base + 32..base + 40].try_into().unwrap()) as usize;
-            let flags =
-                u64::from_le_bytes(data[base + 40..base + 48].try_into().unwrap());
+            let flags = u64::from_le_bytes(data[base + 40..base + 48].try_into().unwrap());
 
-            if offset.checked_add(compressed_size).is_none_or(|end| end > data.len()) {
+            if offset
+                .checked_add(compressed_size)
+                .is_none_or(|end| end > data.len())
+            {
                 continue;
             }
 
@@ -410,7 +398,10 @@ pub fn expand_kpka_entries(cands: &mut Vec<Candidate>, verbose: bool) {
             cands.push(Candidate {
                 path: parent.with_extension(format!("kpka_{index:05}")),
                 data: candidate_data,
-                source: CandidateSource::Kpka { archive: parent.clone(), index },
+                source: CandidateSource::Kpka {
+                    archive: parent.clone(),
+                    index,
+                },
                 coverage: Coverage::default(),
             });
         }
@@ -470,7 +461,10 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
                     cands.push(Candidate {
                         path: parent.with_extension(format!("lzma_{offset:08x}")),
                         data: decompressed,
-                        source: CandidateSource::Lzma { parent: parent.clone(), offset },
+                        source: CandidateSource::Lzma {
+                            parent: parent.clone(),
+                            offset,
+                        },
                         coverage: Coverage::default(),
                     });
                 }
@@ -478,7 +472,11 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
             offset += 1;
         }
         if verbose && xz_attempts > 0 {
-            eprintln!("  XZ: {} decompression attempts in {}", xz_attempts, parent.display());
+            eprintln!(
+                "  XZ: {} decompression attempts in {}",
+                xz_attempts,
+                parent.display()
+            );
         }
 
         // ---- LZMA1 blocks ----
@@ -512,9 +510,8 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
                 }
 
                 // Optimization 4: validate uncompressed size against pending ROM sizes.
-                let uncomp_size = u64::from_le_bytes(
-                    data[offset + 5..offset + 13].try_into().unwrap(),
-                );
+                let uncomp_size =
+                    u64::from_le_bytes(data[offset + 5..offset + 13].try_into().unwrap());
                 if uncomp_size != u64::MAX {
                     // Known size: must be non-zero, ≤16 MB, and match a pending ROM.
                     if uncomp_size == 0
@@ -543,7 +540,10 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
                     cands.push(Candidate {
                         path: parent.with_extension(format!("lzma_{offset:08x}")),
                         data: decompressed,
-                        source: CandidateSource::Lzma { parent: parent.clone(), offset },
+                        source: CandidateSource::Lzma {
+                            parent: parent.clone(),
+                            offset,
+                        },
                         coverage: Coverage::default(),
                     });
                 }
@@ -553,7 +553,9 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
         if verbose {
             eprintln!(
                 "  LZMA1: {} decompression attempts across {} bytes in {}",
-                lzma1_attempts, data.len(), parent.display()
+                lzma1_attempts,
+                data.len(),
+                parent.display()
             );
         }
     }
@@ -617,7 +619,6 @@ pub fn decode_lz77(data: &[u8]) -> Option<(Vec<u8>, usize)> {
     Some((out, src))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -659,10 +660,7 @@ mod tests {
         let full_crc = crc32fast::hash(&full);
         let derived = derive_content_crc(full_crc, header, content.len());
         let actual = crc32fast::hash(&content);
-        assert_eq!(
-            derived, actual,
-            "derived={derived:08x} actual={actual:08x}"
-        );
+        assert_eq!(derived, actual, "derived={derived:08x} actual={actual:08x}");
     }
 
     #[test]
@@ -741,7 +739,6 @@ mod tests {
         assert!(decode_lz77(&data).is_none());
     }
 
-
     #[test]
     fn header_rom_round_trip() {
         // Simulate what happens: DAT has header+content CRC/SHA1,
@@ -758,7 +755,11 @@ mod tests {
         assert_eq!(roms[0].size, content.len());
 
         let mut cands = vec![make_candidate("raw.bin", content.clone())];
-        let records = run_heuristic(&ExactCrc::new(crate::types::ByteSwap::None, false), &mut roms, &mut cands);
+        let records = run_heuristic(
+            &ExactCrc::new(crate::types::ByteSwap::None, false),
+            &mut roms,
+            &mut cands,
+        );
 
         assert_eq!(records.len(), 1);
         assert!(roms[0].matched);

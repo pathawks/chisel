@@ -29,11 +29,7 @@ fn py_str(s: &str) -> String {
 
 /// Write a task compatible with Game Extraction Toolkit
 /// https://github.com/shawngmc/game-extraction-toolbox
-pub fn write_task(
-    records: &[MatchRecord],
-    cands: &[Candidate],
-    path: &Path,
-) -> anyhow::Result<()> {
+pub fn write_task(records: &[MatchRecord], cands: &[Candidate], path: &Path) -> anyhow::Result<()> {
     let task_name = "generated";
     let title = "chisel export";
 
@@ -61,7 +57,9 @@ pub fn write_task(
         extra_imports.push_str("import io\nimport lzma\n");
     }
     if needs_kpka {
-        extra_imports.push_str("# KPKA entries: install 'zstandard' (pip install zstandard) for decompression\n");
+        extra_imports.push_str(
+            "# KPKA entries: install 'zstandard' (pip install zstandard) for decompression\n",
+        );
     }
 
     let mut out = format!(
@@ -116,9 +114,7 @@ class GeneratedTask(BaseTask):
                 out.push_str(&format!(
                     "        with zipfile.ZipFile(os.path.join(in_dir, {py_archive})) as z:\n"
                 ));
-                out.push_str(&format!(
-                    "            with z.open({py_member}) as f:\n"
-                ));
+                out.push_str(&format!("            with z.open({py_member}) as f:\n"));
                 out.push_str("                contents = f.read()\n");
             }
             CandidateSource::Kpka { archive, index } => {

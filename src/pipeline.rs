@@ -54,7 +54,8 @@ pub fn run_pipeline(
     let heuristics: Vec<Box<dyn Heuristic>> = {
         let mut cfg = PipelineConfig::default();
         if no_byte_swap {
-            cfg.byte_swaps.retain(|&bs| bs == chisel::types::ByteSwap::None);
+            cfg.byte_swaps
+                .retain(|&bs| bs == chisel::types::ByteSwap::None);
         }
         cfg.heuristics()
     };
@@ -152,7 +153,11 @@ pub fn run_pipeline(
                 &mut pending,
                 roms,
                 &mut unmatched,
-                if collect_records { Some(&mut records) } else { None },
+                if collect_records {
+                    Some(&mut records)
+                } else {
+                    None
+                },
                 verbose,
                 |rom, bytes| {
                     if !collect_records {

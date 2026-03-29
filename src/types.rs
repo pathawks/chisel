@@ -262,19 +262,31 @@ impl std::fmt::Display for Candidate {
         match &self.source {
             CandidateSource::Plain => {}
             CandidateSource::Gzip { archive } => {
-                let a = archive.file_name().map(|s| s.to_string_lossy()).unwrap_or("???".into());
+                let a = archive
+                    .file_name()
+                    .map(|s| s.to_string_lossy())
+                    .unwrap_or("???".into());
                 write!(f, "[gzip in {}]", a)?;
             }
             CandidateSource::Zip { archive, member } => {
-                let a = archive.file_name().map(|s| s.to_string_lossy()).unwrap_or("???".into());
+                let a = archive
+                    .file_name()
+                    .map(|s| s.to_string_lossy())
+                    .unwrap_or("???".into());
                 write!(f, "[zip:{} in {}]", member, a)?;
             }
             CandidateSource::Lzma { parent, offset } => {
-                let p = parent.file_name().map(|s| s.to_string_lossy()).unwrap_or("???".into());
+                let p = parent
+                    .file_name()
+                    .map(|s| s.to_string_lossy())
+                    .unwrap_or("???".into());
                 write!(f, "[lzma@0x{:x} in {}]", offset, p)?;
             }
             CandidateSource::Kpka { archive, index } => {
-                let a = archive.file_name().map(|s| s.to_string_lossy()).unwrap_or("???".into());
+                let a = archive
+                    .file_name()
+                    .map(|s| s.to_string_lossy())
+                    .unwrap_or("???".into());
                 write!(f, "[kpka[{}] in {}]", index, a)?;
             }
         }
@@ -404,7 +416,9 @@ impl std::str::FromStr for ByteSwap {
             "none" => Ok(ByteSwap::None),
             "swap2" => Ok(ByteSwap::Swap2),
             "swap4" => Ok(ByteSwap::Swap4),
-            _ => Err(format!("unknown byte_swap value: {s:?} (expected none, swap2, swap4)")),
+            _ => Err(format!(
+                "unknown byte_swap value: {s:?} (expected none, swap2, swap4)"
+            )),
         }
     }
 }
@@ -424,13 +438,23 @@ impl std::str::FromStr for ExtractionSpec {
                 .ok_or_else(|| format!("expected key=value, got {part:?}"))?;
             match key.trim() {
                 "skip" => spec.skip = val.trim().parse().map_err(|e| format!("bad skip: {e}"))?,
-                "step_by" => spec.step_by = val.trim().parse().map_err(|e| format!("bad step_by: {e}"))?,
+                "step_by" => {
+                    spec.step_by = val
+                        .trim()
+                        .parse()
+                        .map_err(|e| format!("bad step_by: {e}"))?
+                }
                 "take" => spec.take = val.trim().parse().map_err(|e| format!("bad take: {e}"))?,
                 "size" => {
                     spec.size = val.trim().parse().map_err(|e| format!("bad size: {e}"))?;
                     size_set = true;
                 }
-                "rotate_left" => spec.rotate_left = val.trim().parse().map_err(|e| format!("bad rotate_left: {e}"))?,
+                "rotate_left" => {
+                    spec.rotate_left = val
+                        .trim()
+                        .parse()
+                        .map_err(|e| format!("bad rotate_left: {e}"))?
+                }
                 "byte_swap" => spec.byte_swap = val.trim().parse()?,
                 other => return Err(format!("unknown key: {other:?}")),
             }
@@ -446,7 +470,10 @@ impl std::str::FromStr for ExtractionSpec {
             return Err("take must be >= 1".to_string());
         }
         if spec.step_by < spec.take {
-            return Err(format!("step_by ({}) must be >= take ({})", spec.step_by, spec.take));
+            return Err(format!(
+                "step_by ({}) must be >= take ({})",
+                spec.step_by, spec.take
+            ));
         }
         Ok(spec)
     }

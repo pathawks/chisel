@@ -43,9 +43,13 @@ impl PipelineConfig {
 
             // Deinterleave (non-sliding) variants
             for &(weave, word_size) in &self.deinterleaves {
-                out.push(Box::new(Deinterleave::with_opts(weave, word_size, bs, false)));
+                out.push(Box::new(Deinterleave::with_opts(
+                    weave, word_size, bs, false,
+                )));
                 if self.rotate {
-                    out.push(Box::new(Deinterleave::with_opts(weave, word_size, bs, true)));
+                    out.push(Box::new(Deinterleave::with_opts(
+                        weave, word_size, bs, true,
+                    )));
                 }
             }
 

@@ -25,7 +25,12 @@ impl DeinterleaveSplit {
         } else {
             format!("DeinterleaveSplit({},{}{})", weave, word_size, bs)
         };
-        DeinterleaveSplit { weave, word_size, byte_swap, name: name_str }
+        DeinterleaveSplit {
+            weave,
+            word_size,
+            byte_swap,
+            name: name_str,
+        }
     }
 
     fn granularity(&self) -> usize {
@@ -126,17 +131,23 @@ impl Heuristic for DeinterleaveSplit {
                     }
                 }
                 swap => {
-                    if !bucket.size.is_multiple_of(gran) { continue; }
-                    let mut swapped_buf = buf.clone();      // O(lane_len) once
+                    if !bucket.size.is_multiple_of(gran) {
+                        continue;
+                    }
+                    let mut swapped_buf = buf.clone(); // O(lane_len) once
                     swap_bytes(&mut swapped_buf, swap);
 
                     let targets: Vec<u32> = bucket.map.keys().copied().collect();
                     let hits = crc32_window::find_windows_crc_rolling_any(
-                        &swapped_buf, bucket.size, &targets
+                        &swapped_buf,
+                        bucket.size,
+                        &targets,
                     );
                     for (offset, crc) in hits {
                         // Only keep word-aligned positions (pre-swap is only valid there)
-                        if offset % self.word_size != 0 { continue; }
+                        if offset % self.word_size != 0 {
+                            continue;
+                        }
                         let word_idx = offset / self.word_size;
                         out.push(Found {
                             size: bucket.size,

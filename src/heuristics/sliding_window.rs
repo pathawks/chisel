@@ -28,17 +28,17 @@ impl SlidingWindow {
 
 fn found_from_skip(skip: usize, size: usize, crc: u32, swap: ByteSwap) -> Found {
     Found {
+        size,
+        crc,
+        data: MatchedData::Spec(ExtractionSpec {
+            skip,
+            step_by: 1,
+            take: 1,
             size,
-            crc,
-            data: MatchedData::Spec(ExtractionSpec {
-                skip,
-                step_by: 1,
-                take: 1,
-                size,
-                byte_swap: swap,
-                ..Default::default()
-            }),
-        }
+            byte_swap: swap,
+            ..Default::default()
+        }),
+    }
 }
 
 impl Default for SlidingWindow {
@@ -97,8 +97,7 @@ impl Heuristic for SlidingWindow {
                     return Box::new(std::iter::empty());
                 }
                 let targets: Vec<u32> = bucket.map.keys().copied().collect();
-                let hits =
-                    crc32_window::find_windows_crc_rolling_any(&cand.data, size, &targets);
+                let hits = crc32_window::find_windows_crc_rolling_any(&cand.data, size, &targets);
                 Box::new(hits.into_iter().map(move |(skip, crc)| Found {
                     size,
                     crc,
@@ -128,14 +127,16 @@ impl Heuristic for SlidingWindow {
                 swap_bytes(&mut pre_odd[1..], swap);
 
                 let mut results: Vec<Found> = Vec::new();
-                for (skip, crc) in crc32_window::find_windows_crc_rolling_any(&pre_even,
-                                                                              size, &targets) {
+                for (skip, crc) in
+                    crc32_window::find_windows_crc_rolling_any(&pre_even, size, &targets)
+                {
                     if skip % gran == 0 {
                         results.push(found_from_skip(skip, size, crc, swap));
                     }
                 }
-                for (skip, crc) in crc32_window::find_windows_crc_rolling_any(&pre_odd,
-                                                                              size, &targets) {
+                for (skip, crc) in
+                    crc32_window::find_windows_crc_rolling_any(&pre_odd, size, &targets)
+                {
                     if skip % gran != 0 {
                         results.push(found_from_skip(skip, size, crc, swap));
                     }

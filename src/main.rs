@@ -1,7 +1,7 @@
 #![deny(warnings)]
 
-use clap::Parser;
 use chisel::utils;
+use clap::Parser;
 
 use utils::load_rom_list;
 
@@ -191,8 +191,7 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|| "candidate".to_string());
             for (start, end) in gaps {
                 let chunk = &cand.data[start..end];
-                let filename =
-                    format!("{}_unmatched_{:08x}_{:08x}.bin", stem, start, end - start);
+                let filename = format!("{}_unmatched_{:08x}_{:08x}.bin", stem, start, end - start);
                 let out_path = opt.output_dir.join(&filename);
                 std::fs::write(&out_path, chunk)?;
                 if opt.verbose {
