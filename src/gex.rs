@@ -104,7 +104,11 @@ class GeneratedTask(BaseTask):
                 ));
                 out.push_str("            contents = f.read()\n");
             }
-            CandidateSource::Zip { archive, member } => {
+            CandidateSource::Zip {
+                archive,
+                member,
+                password,
+            } => {
                 let archive_name = archive
                     .file_name()
                     .map(|s| s.to_string_lossy())
@@ -114,7 +118,20 @@ class GeneratedTask(BaseTask):
                 out.push_str(&format!(
                     "        with zipfile.ZipFile(os.path.join(in_dir, {py_archive})) as z:\n"
                 ));
-                out.push_str(&format!("            with z.open({py_member}) as f:\n"));
+                if let Some(pw) = password {
+                    let py_pw = py_str(pw);
+                    out.push_str(
+                        "            # NOTE: zipfile only supports ZipCrypto; AES-encrypted\n",
+                    );
+                    out.push_str(
+                        "            # archives need pyzipper or another AES-capable library.\n",
+                    );
+                    out.push_str(&format!(
+                        "            with z.open({py_member}, pwd={py_pw}.encode()) as f:\n"
+                    ));
+                } else {
+                    out.push_str(&format!("            with z.open({py_member}) as f:\n"));
+                }
                 out.push_str("                contents = f.read()\n");
             }
             CandidateSource::Kpka { archive, index } => {

@@ -28,7 +28,7 @@ const LZMA1_VALID_PROPS: [bool; 256] = {
 /// Check if a dict_size is plausible for real LZMA1 streams.
 /// Real dict sizes are powers of 2 or 2^n + 2^(n-1) (i.e. 3 * 2^(n-1)).
 fn is_valid_lzma_dict_size(d: u32) -> bool {
-    d.is_power_of_two() || (d % 3 == 0 && d / 3 > 0 && (d / 3).is_power_of_two())
+    d.is_power_of_two() || (d.is_multiple_of(3) && d / 3 > 0 && (d / 3).is_power_of_two())
 }
 
 use crate::{Candidate, RomInfo};
@@ -209,9 +209,15 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
 /// Detect compressed archives by magic bytes and expand into `Candidate`s.
 ///
 /// - `.gz` / gzip magic (`1f 8b`): decompress into one candidate.
-/// - `.zip` magic (`PK\x03\x04`): one candidate per unencrypted file member.
+/// - `.zip` magic (`PK\x03\x04`): one candidate per file member. Encrypted members
+///   are decrypted using the provided `passwords`; members that cannot be decrypted
+///   are skipped with a warning (when `verbose` is set).
 /// - Everything else: one plain candidate.
-pub fn load_candidates_from_paths<I>(paths: I, verbose: bool) -> anyhow::Result<Vec<Candidate>>
+pub fn load_candidates_from_paths<I>(
+    paths: I,
+    passwords: &[String],
+    verbose: bool,
+) -> anyhow::Result<Vec<Candidate>>
 where
     I: IntoIterator,
     I::Item: AsRef<Path>,
@@ -257,33 +263,93 @@ where
             let cursor = std::io::Cursor::new(&data);
             let mut archive = zip::ZipArchive::new(cursor)
                 .with_context(|| format!("Opening zip {}", path.display()))?;
-            for i in 0..archive.len() {
-                let mut entry = archive
-                    .by_index(i)
-                    .with_context(|| format!("Reading zip entry {} in {}", i, path.display()))?;
-                if entry.is_dir() {
-                    continue;
-                }
-                if entry.encrypted() {
-                    if verbose {
-                        eprintln!(
-                            "skipping encrypted zip member '{}' in {}",
-                            entry.name(),
-                            path.display()
-                        );
+
+            // Collect metadata first to avoid borrow conflicts when retrying
+            // passwords on encrypted entries.
+            let entry_meta: Vec<_> = (0..archive.len())
+                .map(|i| {
+                    let entry = archive.by_index_raw(i).with_context(|| {
+                        format!("Reading zip entry metadata {} in {}", i, path.display())
+                    })?;
+                    if entry.is_dir() {
+                        return Ok(None);
                     }
-                    continue;
-                }
-                let member_name = entry.name().to_string();
-                let mut member_data = Vec::new();
-                entry.read_to_end(&mut member_data).with_context(|| {
-                    format!("Reading zip member '{}' in {}", member_name, path.display())
-                })?;
+                    Ok(Some((i, entry.name().to_string(), entry.encrypted())))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
+                .collect();
+
+            for (i, member_name, encrypted) in entry_meta {
+                let (member_data, password) = if encrypted {
+                    let mut decrypted = None;
+                    for pw in passwords {
+                        match archive.by_index_decrypt(i, pw.as_bytes()) {
+                            Err(zip::result::ZipError::InvalidPassword) => continue,
+                            Err(e) => {
+                                return Err(anyhow::Error::from(e).context(format!(
+                                    "Reading encrypted zip entry '{}' in {}",
+                                    member_name,
+                                    path.display()
+                                )));
+                            }
+                            Ok(mut entry) => {
+                                let mut buf = Vec::new();
+                                match entry.read_to_end(&mut buf) {
+                                    Ok(_) => {
+                                        decrypted = Some((buf, pw.clone()));
+                                        break;
+                                    }
+                                    // AES HMAC validation failure at end-of-stream
+                                    Err(e)
+                                        if e.kind() == std::io::ErrorKind::InvalidData
+                                            || e.kind() == std::io::ErrorKind::InvalidInput =>
+                                    {
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        return Err(anyhow::Error::from(e).context(format!(
+                                            "Reading zip member '{}' in {}",
+                                            member_name,
+                                            path.display()
+                                        )));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let Some((data, pw)) = decrypted else {
+                        if verbose {
+                            eprintln!(
+                                "skipping encrypted zip member '{}' in {}",
+                                member_name,
+                                path.display()
+                            );
+                        }
+                        continue;
+                    };
+                    (data, Some(pw))
+                } else {
+                    let mut entry = archive.by_index(i).with_context(|| {
+                        format!("Reading zip entry {} in {}", i, path.display())
+                    })?;
+                    let mut buf = Vec::new();
+                    entry.read_to_end(&mut buf).with_context(|| {
+                        format!("Reading zip member '{}' in {}", member_name, path.display())
+                    })?;
+                    (buf, None)
+                };
                 if verbose {
                     eprintln!(
-                        "  zip member: {} ({} bytes)",
+                        "  zip member: {} ({} bytes{})",
                         member_name,
-                        member_data.len()
+                        member_data.len(),
+                        if password.is_some() {
+                            ", decrypted"
+                        } else {
+                            ""
+                        }
                     );
                 }
                 let logical_path = path.join(&member_name);
@@ -293,6 +359,7 @@ where
                     source: CandidateSource::Zip {
                         archive: path.clone(),
                         member: member_name,
+                        password,
                     },
                     coverage: Coverage::default(),
                 });
@@ -622,6 +689,7 @@ pub fn decode_lz77(data: &[u8]) -> Option<(Vec<u8>, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn parse_hex_header_basic() {
@@ -764,5 +832,120 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert!(roms[0].matched);
         assert_eq!(records[0].header.as_deref(), Some(header.as_slice()));
+    }
+
+    /// Helper: create a zip archive in memory with one stored (uncompressed) file.
+    fn make_zip(name: &str, content: &[u8]) -> Vec<u8> {
+        let buf = Vec::new();
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(buf));
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        writer.start_file(name, opts).unwrap();
+        writer.write_all(content).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    /// Helper: create an AES-256 encrypted zip archive in memory.
+    fn make_encrypted_zip(name: &str, content: &[u8], password: &str) -> Vec<u8> {
+        let buf = Vec::new();
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(buf));
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .with_aes_encryption(zip::AesMode::Aes256, password);
+        writer.start_file(name, opts).unwrap();
+        writer.write_all(content).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    /// Helper: write bytes to a temp file and return the path.
+    fn write_temp(dir: &std::path::Path, name: &str, data: &[u8]) -> std::path::PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, data).unwrap();
+        p
+    }
+
+    #[test]
+    fn zip_plain_candidate() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_zip("rom.bin", b"hello");
+        let zip_path = write_temp(&dir, "test.zip", &zip_bytes);
+
+        let cands = load_candidates_from_paths(&[&zip_path], &[], false).unwrap();
+        assert_eq!(cands.len(), 1);
+        assert_eq!(cands[0].data, b"hello");
+        assert!(matches!(
+            &cands[0].source,
+            CandidateSource::Zip { password: None, .. }
+        ));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_correct_password() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_ok");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"payload", "hunter2");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let passwords = vec!["hunter2".to_string()];
+        let cands = load_candidates_from_paths(&[&zip_path], &passwords, false).unwrap();
+        assert_eq!(cands.len(), 1);
+        assert_eq!(cands[0].data, b"payload");
+        assert!(matches!(
+            &cands[0].source,
+            CandidateSource::Zip {
+                password: Some(_),
+                ..
+            }
+        ));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_wrong_password_skipped() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_wrong");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"payload", "correct");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let passwords = vec!["wrong1".to_string(), "wrong2".to_string()];
+        let cands = load_candidates_from_paths(&[&zip_path], &passwords, false).unwrap();
+        assert_eq!(cands.len(), 0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_no_passwords_skipped() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_none");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"payload", "pw");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let cands = load_candidates_from_paths(&[&zip_path], &[], false).unwrap();
+        assert_eq!(cands.len(), 0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_multiple_passwords_finds_correct() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_multi");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"data", "third");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let passwords: Vec<String> = ["first", "second", "third"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let cands = load_candidates_from_paths(&[&zip_path], &passwords, false).unwrap();
+        assert_eq!(cands.len(), 1);
+        assert_eq!(cands[0].data, b"data");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

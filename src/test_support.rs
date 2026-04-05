@@ -1,6 +1,6 @@
 use crate::types::{Candidate, CandidateSource, Found, Heuristic, MatchRecord, Pending, RomInfo};
 use crc32fast;
-use sha1_smol::Sha1;
+use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 
 pub fn make_rom(name: &str, data: &[u8]) -> RomInfo {
@@ -9,7 +9,7 @@ pub fn make_rom(name: &str, data: &[u8]) -> RomInfo {
         game: String::new(),
         size: data.len(),
         crc32: crc32fast::hash(data),
-        sha1: Some(Sha1::from(data).digest().to_string()),
+        sha1: Some(format!("{:x}", Sha1::digest(data))),
         matched: false,
         unverified: false,
         region: None,
@@ -25,7 +25,7 @@ pub fn make_rom_with_header(name: &str, header: &[u8], content: &[u8]) -> RomInf
     full.extend_from_slice(header);
     full.extend_from_slice(content);
     let full_crc = crc32fast::hash(&full);
-    let full_sha1 = Sha1::from(&full).digest().to_string();
+    let full_sha1 = format!("{:x}", Sha1::digest(&full));
     let content_crc = crate::utils::derive_content_crc(full_crc, header, content.len());
     RomInfo {
         name: name.to_string(),
