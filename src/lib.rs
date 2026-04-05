@@ -32,7 +32,7 @@ pub fn apply_found<F>(
 where
     F: FnMut(&RomInfo, &[u8]) -> anyhow::Result<()>,
 {
-    use sha1_smol::Sha1;
+    use sha1::{Digest, Sha1};
     use types::MatchedData;
 
     let MatchedData::Spec(ref spec) = found.data;
@@ -53,12 +53,12 @@ where
                     let mut hasher = Sha1::new();
                     hasher.update(roms[rid].header.as_ref().unwrap());
                     hasher.update(&bytes_owned);
-                    hasher.digest().to_string()
+                    format!("{:x}", hasher.finalize())
                 })
                 .as_str()
         } else {
             if sha1_cache.is_none() {
-                sha1_cache = Some(Sha1::from(&bytes_owned[..]).digest().to_string());
+                sha1_cache = Some(format!("{:x}", Sha1::digest(&bytes_owned[..])));
             }
             sha1_cache.as_ref().unwrap().as_str()
         };
