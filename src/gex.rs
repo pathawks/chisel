@@ -120,6 +120,8 @@ class GeneratedTask(BaseTask):
                 ));
                 if let Some(pw) = password {
                     let py_pw = py_str(pw);
+                    // NOTE: zipfile only supports ZipCrypto; AES-encrypted
+                    // archives need pyzipper or another AES-capable library.
                     out.push_str(&format!(
                         "            with z.open({py_member}, pwd={py_pw}.encode()) as f:\n"
                     ));

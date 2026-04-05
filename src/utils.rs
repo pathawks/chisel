@@ -209,7 +209,9 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
 /// Detect compressed archives by magic bytes and expand into `Candidate`s.
 ///
 /// - `.gz` / gzip magic (`1f 8b`): decompress into one candidate.
-/// - `.zip` magic (`PK\x03\x04`): one candidate per unencrypted file member.
+/// - `.zip` magic (`PK\x03\x04`): one candidate per file member. Encrypted members
+///   are decrypted using the provided `passwords`; members that cannot be decrypted
+///   are skipped with a warning (when `verbose` is set).
 /// - Everything else: one plain candidate.
 pub fn load_candidates_from_paths<I>(
     paths: I,
@@ -265,24 +267,55 @@ where
             // Collect metadata first to avoid borrow conflicts when retrying
             // passwords on encrypted entries.
             let entry_meta: Vec<_> = (0..archive.len())
-                .filter_map(|i| {
-                    let entry = archive.by_index_raw(i).ok()?;
+                .map(|i| {
+                    let entry = archive.by_index_raw(i).with_context(|| {
+                        format!("Reading zip entry metadata {} in {}", i, path.display())
+                    })?;
                     if entry.is_dir() {
-                        return None;
+                        return Ok(None);
                     }
-                    Some((i, entry.name().to_string(), entry.encrypted()))
+                    Ok(Some((i, entry.name().to_string(), entry.encrypted())))
                 })
+                .collect::<anyhow::Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
                 .collect();
 
             for (i, member_name, encrypted) in entry_meta {
                 if encrypted {
                     let mut decrypted = None;
                     for pw in passwords {
-                        if let Ok(mut entry) = archive.by_index_decrypt(i, pw.as_bytes()) {
-                            let mut buf = Vec::new();
-                            if entry.read_to_end(&mut buf).is_ok() {
-                                decrypted = Some((buf, pw.clone()));
-                                break;
+                        match archive.by_index_decrypt(i, pw.as_bytes()) {
+                            Err(zip::result::ZipError::InvalidPassword) => continue,
+                            Err(e) => {
+                                return Err(anyhow::Error::from(e).context(format!(
+                                    "Reading encrypted zip entry '{}' in {}",
+                                    member_name,
+                                    path.display()
+                                )));
+                            }
+                            Ok(mut entry) => {
+                                let mut buf = Vec::new();
+                                match entry.read_to_end(&mut buf) {
+                                    Ok(_) => {
+                                        decrypted = Some((buf, pw.clone()));
+                                        break;
+                                    }
+                                    // AES HMAC validation failure at end-of-stream
+                                    Err(e)
+                                        if e.kind() == std::io::ErrorKind::InvalidData
+                                            || e.kind() == std::io::ErrorKind::InvalidInput =>
+                                    {
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        return Err(anyhow::Error::from(e).context(format!(
+                                            "Reading zip member '{}' in {}",
+                                            member_name,
+                                            path.display()
+                                        )));
+                                    }
+                                }
                             }
                         }
                     }
