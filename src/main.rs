@@ -1,5 +1,6 @@
 #![deny(warnings)]
 
+use anyhow::Context;
 use chisel::utils;
 use clap::Parser;
 
@@ -65,14 +66,32 @@ struct Opt {
     #[arg(long)]
     password: Vec<String>,
 
+    /// Read passwords from a file, one per line
+    #[arg(long)]
+    password_file: Option<std::path::PathBuf>,
+
     /// Verbose logging (-v)
     #[arg(short, long)]
     verbose: bool,
 }
 
-fn run_extract(opt: &Opt, spec: chisel::types::ExtractionSpec) -> anyhow::Result<()> {
+fn load_passwords(opt: &Opt) -> anyhow::Result<Vec<String>> {
+    let mut passwords = opt.password.clone();
+    if let Some(ref path) = opt.password_file {
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Reading password file {}", path.display()))?;
+        passwords.extend(content.lines().filter(|l| !l.is_empty()).map(String::from));
+    }
+    Ok(passwords)
+}
+
+fn run_extract(
+    opt: &Opt,
+    passwords: &[String],
+    spec: chisel::types::ExtractionSpec,
+) -> anyhow::Result<()> {
     std::fs::create_dir_all(&opt.output_dir)?;
-    let cands = utils::load_candidates_from_paths(&opt.input_files, &opt.password, opt.verbose)?;
+    let cands = utils::load_candidates_from_paths(&opt.input_files, passwords, opt.verbose)?;
     for cand in &cands {
         let mut s = spec.clone();
         if s.size == 0 {
@@ -105,8 +124,10 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("--dat and --spec are mutually exclusive");
     }
 
+    let passwords = load_passwords(&opt)?;
+
     if let Some(spec) = opt.spec.clone() {
-        return run_extract(&opt, spec);
+        return run_extract(&opt, &passwords, spec);
     }
 
     let dat = opt
@@ -114,8 +135,7 @@ fn main() -> anyhow::Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("either --dat or --spec is required"))?;
     let mut roms = load_rom_list(dat, opt.game.as_deref())?;
-    let mut cands =
-        utils::load_candidates_from_paths(&opt.input_files, &opt.password, opt.verbose)?;
+    let mut cands = utils::load_candidates_from_paths(&opt.input_files, &passwords, opt.verbose)?;
 
     if opt.gex.is_none() {
         std::fs::create_dir_all(&opt.output_dir)?;

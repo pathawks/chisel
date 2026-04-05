@@ -282,7 +282,7 @@ where
                 .collect();
 
             for (i, member_name, encrypted) in entry_meta {
-                if encrypted {
+                let (member_data, password) = if encrypted {
                     let mut decrypted = None;
                     for pw in passwords {
                         match archive.by_index_decrypt(i, pw.as_bytes()) {
@@ -319,7 +319,7 @@ where
                             }
                         }
                     }
-                    let Some((member_data, pw)) = decrypted else {
+                    let Some((data, pw)) = decrypted else {
                         if verbose {
                             eprintln!(
                                 "skipping encrypted zip member '{}' in {}",
@@ -329,51 +329,40 @@ where
                         }
                         continue;
                     };
-                    if verbose {
-                        eprintln!(
-                            "  zip member: {} ({} bytes, decrypted)",
-                            member_name,
-                            member_data.len()
-                        );
-                    }
-                    let logical_path = path.join(&member_name);
-                    cands.push(Candidate {
-                        path: logical_path,
-                        data: member_data,
-                        source: CandidateSource::Zip {
-                            archive: path.clone(),
-                            member: member_name,
-                            password: Some(pw),
-                        },
-                        coverage: Coverage::default(),
-                    });
+                    (data, Some(pw))
                 } else {
                     let mut entry = archive.by_index(i).with_context(|| {
                         format!("Reading zip entry {} in {}", i, path.display())
                     })?;
-                    let mut member_data = Vec::new();
-                    entry.read_to_end(&mut member_data).with_context(|| {
+                    let mut buf = Vec::new();
+                    entry.read_to_end(&mut buf).with_context(|| {
                         format!("Reading zip member '{}' in {}", member_name, path.display())
                     })?;
-                    if verbose {
-                        eprintln!(
-                            "  zip member: {} ({} bytes)",
-                            member_name,
-                            member_data.len()
-                        );
-                    }
-                    let logical_path = path.join(&member_name);
-                    cands.push(Candidate {
-                        path: logical_path,
-                        data: member_data,
-                        source: CandidateSource::Zip {
-                            archive: path.clone(),
-                            member: member_name,
-                            password: None,
-                        },
-                        coverage: Coverage::default(),
-                    });
+                    (buf, None)
+                };
+                if verbose {
+                    eprintln!(
+                        "  zip member: {} ({} bytes{})",
+                        member_name,
+                        member_data.len(),
+                        if password.is_some() {
+                            ", decrypted"
+                        } else {
+                            ""
+                        }
+                    );
                 }
+                let logical_path = path.join(&member_name);
+                cands.push(Candidate {
+                    path: logical_path,
+                    data: member_data,
+                    source: CandidateSource::Zip {
+                        archive: path.clone(),
+                        member: member_name,
+                        password,
+                    },
+                    coverage: Coverage::default(),
+                });
             }
         } else {
             // plain binary
@@ -700,6 +689,7 @@ pub fn decode_lz77(data: &[u8]) -> Option<(Vec<u8>, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn parse_hex_header_basic() {
@@ -842,5 +832,120 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert!(roms[0].matched);
         assert_eq!(records[0].header.as_deref(), Some(header.as_slice()));
+    }
+
+    /// Helper: create a zip archive in memory with one stored (uncompressed) file.
+    fn make_zip(name: &str, content: &[u8]) -> Vec<u8> {
+        let buf = Vec::new();
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(buf));
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        writer.start_file(name, opts).unwrap();
+        writer.write_all(content).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    /// Helper: create an AES-256 encrypted zip archive in memory.
+    fn make_encrypted_zip(name: &str, content: &[u8], password: &str) -> Vec<u8> {
+        let buf = Vec::new();
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(buf));
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .with_aes_encryption(zip::AesMode::Aes256, password);
+        writer.start_file(name, opts).unwrap();
+        writer.write_all(content).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    /// Helper: write bytes to a temp file and return the path.
+    fn write_temp(dir: &std::path::Path, name: &str, data: &[u8]) -> std::path::PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, data).unwrap();
+        p
+    }
+
+    #[test]
+    fn zip_plain_candidate() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_zip("rom.bin", b"hello");
+        let zip_path = write_temp(&dir, "test.zip", &zip_bytes);
+
+        let cands = load_candidates_from_paths(&[&zip_path], &[], false).unwrap();
+        assert_eq!(cands.len(), 1);
+        assert_eq!(cands[0].data, b"hello");
+        assert!(matches!(
+            &cands[0].source,
+            CandidateSource::Zip { password: None, .. }
+        ));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_correct_password() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_ok");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"payload", "hunter2");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let passwords = vec!["hunter2".to_string()];
+        let cands = load_candidates_from_paths(&[&zip_path], &passwords, false).unwrap();
+        assert_eq!(cands.len(), 1);
+        assert_eq!(cands[0].data, b"payload");
+        assert!(matches!(
+            &cands[0].source,
+            CandidateSource::Zip {
+                password: Some(_),
+                ..
+            }
+        ));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_wrong_password_skipped() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_wrong");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"payload", "correct");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let passwords = vec!["wrong1".to_string(), "wrong2".to_string()];
+        let cands = load_candidates_from_paths(&[&zip_path], &passwords, false).unwrap();
+        assert_eq!(cands.len(), 0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_no_passwords_skipped() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_none");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"payload", "pw");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let cands = load_candidates_from_paths(&[&zip_path], &[], false).unwrap();
+        assert_eq!(cands.len(), 0);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zip_encrypted_multiple_passwords_finds_correct() {
+        let dir = std::env::temp_dir().join("chisel_test_zip_enc_multi");
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip_bytes = make_encrypted_zip("secret.bin", b"data", "third");
+        let zip_path = write_temp(&dir, "enc.zip", &zip_bytes);
+
+        let passwords: Vec<String> = ["first", "second", "third"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let cands = load_candidates_from_paths(&[&zip_path], &passwords, false).unwrap();
+        assert_eq!(cands.len(), 1);
+        assert_eq!(cands[0].data, b"data");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
