@@ -41,6 +41,7 @@ fn cost_ratio(work: u64, value: u64) -> u64 {
     ((work as f64) / (value.max(1) as f64)).ceil() as u64
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_pipeline(
     roms: &mut [RomInfo],
     cands: &mut [Candidate],

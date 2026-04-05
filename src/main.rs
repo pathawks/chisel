@@ -61,6 +61,10 @@ struct Opt {
     #[arg(long)]
     no_expand: bool,
 
+    /// Passwords to try on encrypted zip members (may be repeated)
+    #[arg(long)]
+    password: Vec<String>,
+
     /// Verbose logging (-v)
     #[arg(short, long)]
     verbose: bool,
@@ -68,7 +72,7 @@ struct Opt {
 
 fn run_extract(opt: &Opt, spec: chisel::types::ExtractionSpec) -> anyhow::Result<()> {
     std::fs::create_dir_all(&opt.output_dir)?;
-    let cands = utils::load_candidates_from_paths(&opt.input_files, opt.verbose)?;
+    let cands = utils::load_candidates_from_paths(&opt.input_files, &opt.password, opt.verbose)?;
     for cand in &cands {
         let mut s = spec.clone();
         if s.size == 0 {
@@ -110,7 +114,8 @@ fn main() -> anyhow::Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("either --dat or --spec is required"))?;
     let mut roms = load_rom_list(dat, opt.game.as_deref())?;
-    let mut cands = utils::load_candidates_from_paths(&opt.input_files, opt.verbose)?;
+    let mut cands =
+        utils::load_candidates_from_paths(&opt.input_files, &opt.password, opt.verbose)?;
 
     if opt.gex.is_none() {
         std::fs::create_dir_all(&opt.output_dir)?;

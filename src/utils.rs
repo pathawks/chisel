@@ -28,7 +28,7 @@ const LZMA1_VALID_PROPS: [bool; 256] = {
 /// Check if a dict_size is plausible for real LZMA1 streams.
 /// Real dict sizes are powers of 2 or 2^n + 2^(n-1) (i.e. 3 * 2^(n-1)).
 fn is_valid_lzma_dict_size(d: u32) -> bool {
-    d.is_power_of_two() || (d % 3 == 0 && d / 3 > 0 && (d / 3).is_power_of_two())
+    d.is_power_of_two() || (d.is_multiple_of(3) && d / 3 > 0 && (d / 3).is_power_of_two())
 }
 
 use crate::{Candidate, RomInfo};
@@ -211,7 +211,11 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
 /// - `.gz` / gzip magic (`1f 8b`): decompress into one candidate.
 /// - `.zip` magic (`PK\x03\x04`): one candidate per unencrypted file member.
 /// - Everything else: one plain candidate.
-pub fn load_candidates_from_paths<I>(paths: I, verbose: bool) -> anyhow::Result<Vec<Candidate>>
+pub fn load_candidates_from_paths<I>(
+    paths: I,
+    passwords: &[String],
+    verbose: bool,
+) -> anyhow::Result<Vec<Candidate>>
 where
     I: IntoIterator,
     I::Item: AsRef<Path>,
@@ -257,45 +261,86 @@ where
             let cursor = std::io::Cursor::new(&data);
             let mut archive = zip::ZipArchive::new(cursor)
                 .with_context(|| format!("Opening zip {}", path.display()))?;
-            for i in 0..archive.len() {
-                let mut entry = archive
-                    .by_index(i)
-                    .with_context(|| format!("Reading zip entry {} in {}", i, path.display()))?;
-                if entry.is_dir() {
-                    continue;
-                }
-                if entry.encrypted() {
+
+            // Collect metadata first to avoid borrow conflicts when retrying
+            // passwords on encrypted entries.
+            let entry_meta: Vec<_> = (0..archive.len())
+                .filter_map(|i| {
+                    let entry = archive.by_index_raw(i).ok()?;
+                    if entry.is_dir() {
+                        return None;
+                    }
+                    Some((i, entry.name().to_string(), entry.encrypted()))
+                })
+                .collect();
+
+            for (i, member_name, encrypted) in entry_meta {
+                if encrypted {
+                    let mut decrypted = None;
+                    for pw in passwords {
+                        if let Ok(mut entry) = archive.by_index_decrypt(i, pw.as_bytes()) {
+                            let mut buf = Vec::new();
+                            if entry.read_to_end(&mut buf).is_ok() {
+                                decrypted = Some((buf, pw.clone()));
+                                break;
+                            }
+                        }
+                    }
+                    let Some((member_data, pw)) = decrypted else {
+                        if verbose {
+                            eprintln!(
+                                "skipping encrypted zip member '{}' in {}",
+                                member_name,
+                                path.display()
+                            );
+                        }
+                        continue;
+                    };
                     if verbose {
                         eprintln!(
-                            "skipping encrypted zip member '{}' in {}",
-                            entry.name(),
-                            path.display()
+                            "  zip member: {} ({} bytes, decrypted)",
+                            member_name,
+                            member_data.len()
                         );
                     }
-                    continue;
+                    let logical_path = path.join(&member_name);
+                    cands.push(Candidate {
+                        path: logical_path,
+                        data: member_data,
+                        source: CandidateSource::Zip {
+                            archive: path.clone(),
+                            member: member_name,
+                            password: Some(pw),
+                        },
+                        coverage: Coverage::default(),
+                    });
+                } else {
+                    let mut entry = archive.by_index(i).with_context(|| {
+                        format!("Reading zip entry {} in {}", i, path.display())
+                    })?;
+                    let mut member_data = Vec::new();
+                    entry.read_to_end(&mut member_data).with_context(|| {
+                        format!("Reading zip member '{}' in {}", member_name, path.display())
+                    })?;
+                    if verbose {
+                        eprintln!(
+                            "  zip member: {} ({} bytes)",
+                            member_name,
+                            member_data.len()
+                        );
+                    }
+                    let logical_path = path.join(&member_name);
+                    cands.push(Candidate {
+                        path: logical_path,
+                        data: member_data,
+                        source: CandidateSource::Zip {
+                            archive: path.clone(),
+                            member: member_name,
+                            password: None,
+                        },
+                        coverage: Coverage::default(),
+                    });
                 }
-                let member_name = entry.name().to_string();
-                let mut member_data = Vec::new();
-                entry.read_to_end(&mut member_data).with_context(|| {
-                    format!("Reading zip member '{}' in {}", member_name, path.display())
-                })?;
-                if verbose {
-                    eprintln!(
-                        "  zip member: {} ({} bytes)",
-                        member_name,
-                        member_data.len()
-                    );
-                }
-                let logical_path = path.join(&member_name);
-                cands.push(Candidate {
-                    path: logical_path,
-                    data: member_data,
-                    source: CandidateSource::Zip {
-                        archive: path.clone(),
-                        member: member_name,
-                    },
-                    coverage: Coverage::default(),
-                });
             }
         } else {
             // plain binary

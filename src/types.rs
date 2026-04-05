@@ -235,7 +235,11 @@ pub enum CandidateSource {
     /// Single file decompressed from a gzip stream.
     Gzip { archive: PathBuf },
     /// One member extracted from a zip archive.
-    Zip { archive: PathBuf, member: String },
+    Zip {
+        archive: PathBuf,
+        member: String,
+        password: Option<String>,
+    },
     /// Decompressed from an LZMA/XZ block found at `offset` inside `parent`.
     Lzma { parent: PathBuf, offset: usize },
     /// One entry extracted from a KPKA/PAK archive (index is entry ordinal, 0-based).
@@ -268,7 +272,9 @@ impl std::fmt::Display for Candidate {
                     .unwrap_or("???".into());
                 write!(f, "[gzip in {}]", a)?;
             }
-            CandidateSource::Zip { archive, member } => {
+            CandidateSource::Zip {
+                archive, member, ..
+            } => {
                 let a = archive
                     .file_name()
                     .map(|s| s.to_string_lossy())
