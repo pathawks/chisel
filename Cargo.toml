@@ -1,6 +1,6 @@
 [package]
 name = "chisel-extract"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 description = "Find and extract known data fragments from arbitrary binary files — using only checksums, sizes, and structural metadata"
 license = "MIT"

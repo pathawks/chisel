@@ -28,7 +28,7 @@ const LZMA1_VALID_PROPS: [bool; 256] = {
 /// Check if a dict_size is plausible for real LZMA1 streams.
 /// Real dict sizes are powers of 2 or 2^n + 2^(n-1) (i.e. 3 * 2^(n-1)).
 fn is_valid_lzma_dict_size(d: u32) -> bool {
-    d.is_power_of_two() || (d % 3 == 0 && d / 3 > 0 && (d / 3).is_power_of_two())
+    d.is_power_of_two() || (d.is_multiple_of(3) && d / 3 > 0 && (d / 3).is_power_of_two())
 }
 
 use crate::{Candidate, RomInfo};
