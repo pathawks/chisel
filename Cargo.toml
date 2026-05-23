@@ -2,6 +2,7 @@
 name = "chisel-extract"
 version = "1.0.2"
 edition = "2024"
+rust-version = "1.95"
 description = "Find and extract known data fragments from arbitrary binary files — using only checksums, sizes, and structural metadata"
 license = "MIT"
 repository = "https://github.com/pathawks/chisel"
@@ -15,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 crc32fast = "1.5"
 nohash-hasher = "0.2.0"
 quick-xml = "0.39.2"

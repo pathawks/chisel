@@ -163,8 +163,7 @@ class GeneratedTask(BaseTask):
                 skip = spec.skip,
                 size = spec.size
             ));
-        } else if spec.take != 0 {
-            let num_ways = spec.step_by / spec.take;
+        } else if let Some(num_ways) = spec.step_by.checked_div(spec.take) {
             if spec.take == 1 && spec.skip >= spec.step_by {
                 // Banked interleave: the skip encodes both a bank offset and a
                 // lane index.  Emit a cut to the bank slice first, then

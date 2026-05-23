@@ -619,7 +619,7 @@ mod tests {
         let region_specs = analyze_regions(&roms);
         let s = build_specs(&region_specs[0], &roms).unwrap();
         assert_eq!(s.len(), 4);
-        for (lane, &(_, ref es)) in s.iter().enumerate() {
+        for (lane, (_, es)) in s.iter().enumerate() {
             assert_eq!(es.skip, lane);
             assert_eq!(es.step_by, 4);
             assert_eq!(es.take, 1);
@@ -665,8 +665,8 @@ mod tests {
         let roms: Vec<RomInfo> = (0u64..n_lanes as u64)
             .map(|i| {
                 let mut lane_bytes = vec![0u8; lane_size];
-                for b in 0..lane_size {
-                    lane_bytes[b] = (i as usize * 17 + b * 3) as u8;
+                for (b, byte) in lane_bytes.iter_mut().enumerate() {
+                    *byte = (i as usize * 17 + b * 3) as u8;
                 }
                 let mut h = crc32fast::Hasher::new();
                 h.update(&lane_bytes);

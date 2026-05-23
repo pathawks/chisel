@@ -88,7 +88,7 @@ See `src/types.rs`.
 
 ## Installation
 
-Requires Rust 2024 edition (rustc 1.85+).
+Requires Rust 2024 edition (rustc 1.95+).
 
 ```sh
 cargo install --path .
