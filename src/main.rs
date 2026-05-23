@@ -56,10 +56,37 @@ struct Opt {
     #[arg(long)]
     no_byte_swap: bool,
 
+    /// Disable deinterleave heuristic variants; speeds up matching when you
+    /// know the candidate data is not interleaved
+    #[arg(long)]
+    no_deinterleave: bool,
+
     /// Disable expansion of KPKA/PAK archives and embedded LZMA/XZ blocks
     /// within candidates
     #[arg(long)]
     no_expand: bool,
+
+    /// Disable rotate heuristic variants
+    #[arg(long)]
+    no_rotate: bool,
+
+    /// Disable sliding-window heuristic variants
+    #[arg(long)]
+    no_sliding: bool,
+
+    /// Scan-only: keep only the heuristics that look for the fragment
+    /// preserved byte-for-byte (exact-CRC + sliding-window + rotate).
+    /// Equivalent to --no-deinterleave --no-byte-swap --no-structural
+    /// --no-expand.
+    #[arg(long)]
+    scan_only: bool,
+
+    /// Exact-only: only test whether the whole candidate is itself the
+    /// fragment (single O(1) CRC check per candidate). Useful for renaming
+    /// files against a DAT. Equivalent to --scan-only --no-rotate
+    /// --no-sliding.
+    #[arg(long)]
+    exact_only: bool,
 
     /// Verbose logging (-v)
     #[arg(short, long)]
@@ -95,10 +122,22 @@ fn run_extract(opt: &Opt, spec: chisel::types::ExtractionSpec) -> anyhow::Result
 }
 
 fn main() -> anyhow::Result<()> {
-    let opt = Opt::parse();
+    let mut opt = Opt::parse();
 
     if opt.dat.is_some() && opt.spec.is_some() {
         anyhow::bail!("--dat and --spec are mutually exclusive");
+    }
+
+    if opt.exact_only {
+        opt.scan_only = true;
+        opt.no_rotate = true;
+        opt.no_sliding = true;
+    }
+    if opt.scan_only {
+        opt.no_deinterleave = true;
+        opt.no_byte_swap = true;
+        opt.no_structural = true;
+        opt.no_expand = true;
     }
 
     if let Some(spec) = opt.spec.clone() {
@@ -138,6 +177,9 @@ fn main() -> anyhow::Result<()> {
         opt.game_subdirs,
         opt.verbose,
         opt.no_byte_swap,
+        opt.no_deinterleave,
+        opt.no_rotate,
+        opt.no_sliding,
         structural_records,
         opt.gex.is_some(),
     )?;
@@ -167,6 +209,9 @@ fn main() -> anyhow::Result<()> {
                 opt.game_subdirs,
                 opt.verbose,
                 opt.no_byte_swap,
+                opt.no_deinterleave,
+                opt.no_rotate,
+                opt.no_sliding,
                 records,
                 opt.gex.is_some(),
             )?;

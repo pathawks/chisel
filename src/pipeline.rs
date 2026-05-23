@@ -49,6 +49,9 @@ pub fn run_pipeline(
     game_subdirs: bool,
     verbose: bool,
     no_byte_swap: bool,
+    no_deinterleave: bool,
+    no_rotate: bool,
+    no_sliding: bool,
     initial_records: Vec<MatchRecord>,
     collect_records: bool,
 ) -> anyhow::Result<Vec<MatchRecord>> {
@@ -57,6 +60,15 @@ pub fn run_pipeline(
         if no_byte_swap {
             cfg.byte_swaps
                 .retain(|&bs| bs == chisel::types::ByteSwap::None);
+        }
+        if no_deinterleave {
+            cfg.deinterleaves.clear();
+        }
+        if no_rotate {
+            cfg.rotate = false;
+        }
+        if no_sliding {
+            cfg.sliding = false;
         }
         cfg.heuristics()
     };
