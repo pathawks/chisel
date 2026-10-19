@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(mr.spec.step_by, 1);
         assert_eq!(mr.spec.size, data.len());
         assert_eq!(mr.spec.rotate_left, 0);
-        let extracted = mr.spec.apply(&cands[0].data);
+        let extracted = mr.spec.apply(&cands[0].data).unwrap();
         assert_eq!(extracted, data);
         assert!(roms[0].matched);
         assert!(cands[0].coverage.is_fully_covered(mr.spec.size));
@@ -259,7 +259,7 @@ mod tests {
         let matches = run_heuristic(&h, &mut roms, &mut cands);
         assert_eq!(matches.len(), 1, "should find one match");
         let spec = &matches[0].spec;
-        let extracted = spec.apply(&cands[0].data);
+        let extracted = spec.apply(&cands[0].data).unwrap();
         assert_eq!(extracted, rom_data, "apply should recover ROM data");
     }
 
@@ -272,7 +272,7 @@ mod tests {
         let h = ExactCrc::new(ByteSwap::Swap4, false);
         let matches = run_heuristic(&h, &mut roms, &mut cands);
         assert_eq!(matches.len(), 1);
-        let extracted = matches[0].spec.apply(&cands[0].data);
+        let extracted = matches[0].spec.apply(&cands[0].data).unwrap();
         assert_eq!(extracted, rom_data);
     }
 

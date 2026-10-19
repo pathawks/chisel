@@ -74,7 +74,7 @@ fn run_extract(opt: &Opt, spec: chisel::types::ExtractionSpec) -> anyhow::Result
         if s.size == 0 {
             s.size = cand.data.len().saturating_sub(s.skip);
         }
-        let result = s.apply(&cand.data);
+        let result = s.apply(&cand.data)?;
         let stem = cand
             .path
             .file_stem()

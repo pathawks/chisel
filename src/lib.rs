@@ -36,7 +36,7 @@ where
     use types::MatchedData;
 
     let MatchedData::Spec(ref spec) = found.data;
-    let bytes_owned = spec.apply(&cands[cand_idx].data);
+    let bytes_owned = spec.apply(&cands[cand_idx].data)?;
 
     let mut sha1_cache: Option<String> = None;
     let mut sha1_with_header_cache: std::collections::HashMap<usize, String> =

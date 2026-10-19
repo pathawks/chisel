@@ -187,7 +187,7 @@ mod tests {
         let mr = &matches[0];
         assert_eq!(mr.spec.step_by, 2);
         assert_eq!(mr.spec.skip, 4);
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
     }
 
     #[test]
@@ -206,7 +206,7 @@ mod tests {
             .expect("expected match with skip 4");
         assert_eq!(mr.spec.step_by, 2);
         assert_eq!(mr.spec.skip, 4);
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
         let mr = matches
             .iter()
             .find(|m| m.spec.skip == 3)
@@ -214,7 +214,7 @@ mod tests {
         assert!(roms[1].matched);
         assert_eq!(mr.spec.step_by, 2);
         assert_eq!(mr.spec.skip, 3);
-        assert_eq!(mr.spec.apply(&interleaved), b"bcdef");
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), b"bcdef");
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod tests {
         let mr = &matches[0];
         assert_eq!(mr.spec.step_by, 2);
         assert_eq!(mr.spec.skip, 5);
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
     }
 
     #[test]
@@ -246,7 +246,7 @@ mod tests {
         let mr = &matches[0];
         assert_eq!(mr.spec.step_by, 2);
         assert_eq!(mr.spec.skip, 4);
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
     }
 
     #[test]
@@ -262,7 +262,7 @@ mod tests {
         let mr = &matches[0];
         assert_eq!(mr.spec.step_by, 2);
         assert_eq!(mr.spec.skip, 5);
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
     }
 
     #[test]
@@ -278,7 +278,7 @@ mod tests {
         let mr = &matches[0];
         assert_eq!(mr.spec.step_by, 4);
         assert_eq!(mr.spec.skip, 0);
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
     }
 
     #[test]
@@ -294,7 +294,7 @@ mod tests {
         let mr = &matches[0];
         assert_eq!(mr.spec.step_by, 4);
         assert_eq!(mr.spec.skip, 8);
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(matches.len(), 1);
         assert!(roms[0].matched);
         let mr = &matches[0];
-        assert_eq!(mr.spec.apply(&interleaved), orig);
+        assert_eq!(mr.spec.apply(&interleaved).unwrap(), orig);
     }
 
     #[test]
@@ -321,7 +321,10 @@ mod tests {
 
         let matches = run_heuristic(&DeinterleaveSplit::new(2, 2), &mut roms, &mut cands);
         assert_eq!(matches.len(), 2);
-        let outputs: Vec<Vec<u8>> = matches.iter().map(|m| m.spec.apply(&interleaved)).collect();
+        let outputs: Vec<Vec<u8>> = matches
+            .iter()
+            .map(|m| m.spec.apply(&interleaved).unwrap())
+            .collect();
         assert!(outputs.contains(&rom1.to_vec()));
         assert!(outputs.contains(&rom2.to_vec()));
         assert!(matches.iter().all(|m| m.spec.take == 2));
@@ -355,7 +358,7 @@ mod tests {
         let h = DeinterleaveSplit::with_opts(2, 1, ByteSwap::Swap2);
         let matches = run_heuristic(&h, &mut roms, &mut cands);
         assert_eq!(matches.len(), 1, "should find one match");
-        let extracted = matches[0].spec.apply(&cand_data);
+        let extracted = matches[0].spec.apply(&cand_data).unwrap();
         assert_eq!(extracted, rom_data, "apply should recover ROM data");
     }
 }

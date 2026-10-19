@@ -237,22 +237,27 @@ fn build_bank_specs(
 // ─── Decomposition & verification ────────────────────────────────────────────
 
 /// Apply `spec` to `data` and return `(extracted_bytes, crc32)`.
-fn decompose_rom(data: &[u8], spec: &ExtractionSpec) -> (Vec<u8>, u32) {
-    let bytes = spec.apply(data);
+fn decompose_rom(data: &[u8], spec: &ExtractionSpec) -> anyhow::Result<(Vec<u8>, u32)> {
+    let bytes = spec.apply(data)?;
     let mut h = CrcHasher::new();
     h.update(&bytes);
-    (bytes, h.finalize())
+    Ok((bytes, h.finalize()))
 }
 
 /// Count how many pieces verify against their expected CRC.
-fn score_candidate(cand_data: &[u8], specs: &[(usize, ExtractionSpec)], roms: &[RomInfo]) -> usize {
-    specs
-        .iter()
-        .filter(|(rom_idx, spec)| {
-            let (_, crc) = decompose_rom(cand_data, spec);
-            crc == roms[*rom_idx].crc32
-        })
-        .count()
+fn score_candidate(
+    cand_data: &[u8],
+    specs: &[(usize, ExtractionSpec)],
+    roms: &[RomInfo],
+) -> anyhow::Result<usize> {
+    let mut score = 0;
+    for (rom_idx, spec) in specs {
+        let (_, crc) = decompose_rom(cand_data, spec)?;
+        if crc == roms[*rom_idx].crc32 {
+            score += 1;
+        }
+    }
+    Ok(score)
 }
 
 /// Per-ROM result of decomposing one candidate against one region.
@@ -269,22 +274,24 @@ fn attempt_decomposition(
     cand_data: &[u8],
     region_spec: &RegionSpec,
     roms: &[RomInfo],
-) -> Option<Vec<Piece>> {
-    let specs = build_specs(region_spec, roms)?;
+) -> anyhow::Result<Option<Vec<Piece>>> {
+    let Some(specs) = build_specs(region_spec, roms) else {
+        return Ok(None);
+    };
     let pieces = specs
         .into_iter()
-        .map(|(rom_idx, spec)| {
-            let (bytes, crc) = decompose_rom(cand_data, &spec);
+        .map(|(rom_idx, spec)| -> anyhow::Result<Piece> {
+            let (bytes, crc) = decompose_rom(cand_data, &spec)?;
             let verified = crc == roms[rom_idx].crc32;
-            Piece {
+            Ok(Piece {
                 rom_idx,
                 spec,
                 bytes,
                 verified,
-            }
+            })
         })
-        .collect();
-    Some(pieces)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    Ok(Some(pieces))
 }
 
 // ─── Human-readable layout labels ────────────────────────────────────────────
@@ -390,11 +397,11 @@ pub fn run_structural_pass(
             };
             let scored: Vec<(usize, usize)> = cand_indices
                 .iter()
-                .map(|&ci| {
-                    let score = score_candidate(&cands[ci].data, &specs, roms);
-                    (ci, score)
+                .map(|&ci| -> anyhow::Result<_> {
+                    let score = score_candidate(&cands[ci].data, &specs, roms)?;
+                    Ok((ci, score))
                 })
-                .collect();
+                .collect::<anyhow::Result<Vec<_>>>()?;
 
             let best_score = scored.iter().map(|&(_, s)| s).max().unwrap_or(0);
             if best_score == 0 {
@@ -417,7 +424,7 @@ pub fn run_structural_pass(
             best[0].0
         };
 
-        let pieces = match attempt_decomposition(&cands[best_cand_idx].data, region_spec, roms) {
+        let pieces = match attempt_decomposition(&cands[best_cand_idx].data, region_spec, roms)? {
             Some(p) => p,
             None => continue,
         };
@@ -677,7 +684,7 @@ mod tests {
         let region_specs = analyze_regions(&roms);
         let specs = build_specs(&region_specs[0], &roms).unwrap();
         for (rom_idx, spec) in &specs {
-            let (extracted, crc) = decompose_rom(&combined, spec);
+            let (extracted, crc) = decompose_rom(&combined, spec).unwrap();
             assert_eq!(crc, roms[*rom_idx].crc32, "lane {rom_idx} CRC mismatch");
             assert_eq!(extracted.len(), lane_size);
         }

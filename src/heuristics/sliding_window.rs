@@ -183,7 +183,7 @@ mod tests {
         assert_eq!(matches.len(), 1);
         let spec = &matches[0].spec;
         assert_eq!(spec.skip, 4);
-        let extracted = spec.apply(&data);
+        let extracted = spec.apply(&data).unwrap();
         assert_eq!(extracted, rom_data);
     }
 
@@ -201,7 +201,7 @@ mod tests {
         assert_eq!(matches.len(), 1);
         let spec = &matches[0].spec;
         assert_eq!(spec.skip, 4);
-        let extracted = spec.apply(&data);
+        let extracted = spec.apply(&data).unwrap();
         assert_eq!(extracted, rom_data);
     }
 

@@ -355,7 +355,7 @@ impl std::fmt::Display for ExtractionSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut parts = Vec::new();
         if self.skip != 0 {
-            if self.skip.is_multiple_of(self.step_by) {
+            if self.size != 0 && self.skip.is_multiple_of(self.size) {
                 parts.push(format!(
                     "skip {}*{} bytes",
                     self.skip / self.size,
