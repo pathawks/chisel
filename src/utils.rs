@@ -341,10 +341,10 @@ pub fn expand_kpka_entries(cands: &mut Vec<Candidate>, verbose: bool) {
     const KPKA_ENTRY_SIZE: usize = 48;
     const KPKA_HEADER_SIZE: usize = 12;
 
-    let original_len = cands.len();
-    for i in 0..original_len {
-        let parent = cands[i].path.clone();
-        let data = cands[i].data.clone();
+    let mut expanded = Vec::new();
+    for cand in cands.iter() {
+        let parent = cand.path.clone();
+        let data = &cand.data;
 
         if data.len() < KPKA_HEADER_SIZE || !data.starts_with(KPKA_MAGIC) {
             continue;
@@ -399,7 +399,7 @@ pub fn expand_kpka_entries(cands: &mut Vec<Candidate>, verbose: bool) {
                 );
             }
 
-            cands.push(Candidate {
+            expanded.push(Candidate {
                 path: parent.with_extension(format!("kpka_{index:05}")),
                 data: candidate_data,
                 source: CandidateSource::Kpka {
@@ -410,6 +410,7 @@ pub fn expand_kpka_entries(cands: &mut Vec<Candidate>, verbose: bool) {
             });
         }
     }
+    cands.extend(expanded);
 }
 
 /// Scan existing candidates for embedded LZMA/XZ blocks and append successfully
@@ -437,11 +438,10 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
         .map(|r| r.size as u64)
         .collect();
 
-    let original_len = cands.len();
-    for i in 0..original_len {
-        let parent = cands[i].path.clone();
-        // Clone data to avoid borrowing `cands` while we push new entries.
-        let data = cands[i].data.clone();
+    let mut expanded = Vec::new();
+    for cand in cands.iter() {
+        let parent = cand.path.clone();
+        let data = &cand.data;
 
         // ---- XZ blocks ----
         let mut offset = 0;
@@ -462,7 +462,7 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
                             decompressed.len()
                         );
                     }
-                    cands.push(Candidate {
+                    expanded.push(Candidate {
                         path: parent.with_extension(format!("lzma_{offset:08x}")),
                         data: decompressed,
                         source: CandidateSource::Lzma {
@@ -541,7 +541,7 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
                             decompressed.len()
                         );
                     }
-                    cands.push(Candidate {
+                    expanded.push(Candidate {
                         path: parent.with_extension(format!("lzma_{offset:08x}")),
                         data: decompressed,
                         source: CandidateSource::Lzma {
@@ -563,6 +563,7 @@ pub fn expand_lzma_blocks(cands: &mut Vec<Candidate>, roms: &[RomInfo], verbose:
             );
         }
     }
+    cands.extend(expanded);
 }
 
 /// Decode a LZ77 compressed block.
