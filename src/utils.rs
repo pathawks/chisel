@@ -165,9 +165,13 @@ pub fn load_rom_list(dat_path: &Path, maybe_game: Option<&str>) -> anyhow::Resul
                         _ => {}
                     }
                 }
-                // If a header is present, adjust size/CRC for content-only matching
-                if let Some(hex_str) = raw_header {
-                    let hdr = parse_hex_header(&hex_str).context("Parsing <rom header>")?;
+                // No-Intro overloads `<rom header=...>`: only the NES Headered set puts hex
+                // wrapper bytes here; others (GBC) use metadata like cart serials or "!none".
+                if let Some(hdr) = raw_header
+                    .as_deref()
+                    .and_then(|s| parse_hex_header(s).ok())
+                    .filter(|h| !h.is_empty())
+                {
                     let full_crc = info.crc32;
                     let content_len = info
                         .size
@@ -644,6 +648,69 @@ mod tests {
     #[test]
     fn parse_hex_header_bad_hex() {
         assert!(parse_hex_header("GG").is_err());
+    }
+
+    fn write_temp_dat(xml: &str, tag: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "chisel-test-{}-{}-{tag}.dat",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, xml).unwrap();
+        path
+    }
+
+    #[test]
+    fn load_rom_list_ignores_non_hex_header() {
+        let xml = r#"<?xml version="1.0"?>
+<datafile>
+  <game name="Puchi Carat (USA) (Proto 1)">
+    <rom name="Puchi Carat.gbc" size="1048576" crc="d79b6f46" sha1="b91b121a6951bcc74f0e4af33d41a1fba62f9822" header="AIQE"/>
+  </game>
+  <game name="SNES sentinel">
+    <rom name="something.sfc" size="1048576" crc="76390095" sha1="a70293f915e5ebdd2c4b3a7acd428876633964ea" header="!none"/>
+  </game>
+</datafile>"#;
+        let path = write_temp_dat(xml, "nonhex");
+        let result = load_rom_list(&path, None);
+        let _ = std::fs::remove_file(&path);
+        let roms = result.expect("non-hex header values should be ignored, not error");
+        assert_eq!(roms.len(), 2);
+        assert!(roms.iter().all(|r| r.header.is_none()));
+        assert_eq!(roms[0].crc32, 0xd79b_6f46);
+        assert_eq!(roms[0].size, 1_048_576);
+    }
+
+    #[test]
+    fn load_rom_list_parses_hex_header() {
+        let header_bytes = b"\x4E\x45\x53\x1A\x00\x00\x00\xB8\x20\x01\x00\x0B\x00\x00\x00\x2A";
+        let content: Vec<u8> = (0..256u16).map(|i| (i & 0xFF) as u8).collect();
+        let mut full = Vec::new();
+        full.extend_from_slice(header_bytes);
+        full.extend_from_slice(&content);
+        let full_crc = crc32fast::hash(&full);
+
+        let xml = format!(
+            r#"<?xml version="1.0"?>
+<datafile>
+  <game name="Test (Headered)">
+    <rom name="test.nes" size="{}" crc="{:08x}" sha1="0000000000000000000000000000000000000000" header="4E 45 53 1A 00 00 00 B8 20 01 00 0B 00 00 00 2A"/>
+  </game>
+</datafile>"#,
+            full.len(),
+            full_crc,
+        );
+        let path = write_temp_dat(&xml, "hex");
+        let result = load_rom_list(&path, None);
+        let _ = std::fs::remove_file(&path);
+        let roms = result.expect("hex header should parse");
+        assert_eq!(roms.len(), 1);
+        assert_eq!(roms[0].header.as_deref(), Some(header_bytes.as_slice()));
+        assert_eq!(roms[0].size, content.len());
+        assert_eq!(roms[0].crc32, crc32fast::hash(&content));
     }
 
     #[test]
