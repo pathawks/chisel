@@ -154,7 +154,12 @@ Spec keys: `skip`, `step_by`, `take`, `size`, `rotate_left`, `byte_swap` (`none`
 | `--emit-unmatched`    | Write unmatched candidate chunks to output               |
 | `--no-structural`     | Disable structural (region-layout) matching pass         |
 | `--no-byte-swap`      | Disable byte-swap heuristic variants                     |
+| `--no-deinterleave`   | Disable deinterleave heuristic variants                  |
+| `--no-rotate`         | Disable rotate heuristic variants                        |
+| `--no-sliding`        | Disable sliding-window heuristic variants                |
 | `--no-expand`         | Disable KPKA/PAK and LZMA/XZ archive expansion           |
+| `--scan-only`         | Keep only heuristics that look for the fragment preserved byte-for-byte (exact-CRC + sliding-window + rotate) |
+| `--exact-only`        | Only test whether the whole candidate is itself the fragment (O(1) per candidate); good for renaming files against a DAT |
 | `-v, --verbose`       | Verbose logging                                          |
 
 ## Supported input formats
